@@ -10,6 +10,46 @@ import {
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 afterEach(cleanup);
 
+it('keeps pinned history while its trigger falls back to tokens or elapsed-only', () => {
+  const props = {
+    elapsedText: '10s',
+    rate: '100',
+    rateText: '100 tok/s',
+    averageRate: '100',
+    outputTokens: 1000,
+    history: {
+      startedAt: 1,
+      baseline: null,
+      peak: 100,
+      latestRate: 100,
+      samples: [{ durationMs: 1000, outputTokens: 100, rate: 100 }],
+    },
+  };
+  const { rerender } = render(<RunningTokenRatePopover {...props} />);
+  const trigger = screen.getByRole('button');
+  fireEvent.click(trigger);
+  const dialog = screen.getByRole('dialog');
+  rerender(
+    <RunningTokenRatePopover
+      {...props}
+      rate={null}
+      averageRate={null}
+      rateText="1.2k tok"
+      isTokenCount
+    />,
+  );
+  expect(screen.getByRole('dialog')).toBe(dialog);
+  expect(trigger.textContent).toContain('1.2k tok');
+  expect(trigger.getAttribute('aria-label')).not.toContain('currentRate');
+  expect(screen.getByRole('img').querySelector('circle')).toBeTruthy();
+  rerender(<RunningTokenRatePopover {...props} rateText={null} />);
+  expect(trigger.textContent).toBe('10s');
+  expect(screen.getByRole('dialog')).toBe(dialog);
+  rerender(<RunningTokenRatePopover {...props} />);
+  expect(trigger.textContent).toContain('100 tok/s');
+  expect(screen.getByRole('dialog')).toBe(dialog);
+});
+
 it('pins the card on click and dismisses with Escape, returning focus to the speed', async () => {
   render(
     <RunningTokenRatePopover

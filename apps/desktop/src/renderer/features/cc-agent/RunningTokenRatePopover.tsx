@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Activity, X } from 'lucide-react';
+import { Activity, ArrowDown, X } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip } from '@/components/ui/tooltip';
 import { formatRecentOutputTokenRate, formatRunningTokenCount } from './lib/runningTokenUsage';
@@ -37,6 +37,7 @@ export function RunningTokenRatePopover({
   elapsedText,
   rate,
   rateText,
+  isTokenCount = false,
   averageRate,
   outputTokens,
   history,
@@ -44,7 +45,8 @@ export function RunningTokenRatePopover({
 }: {
   elapsedText: string;
   rate: string | null;
-  rateText: string;
+  rateText: string | null;
+  isTokenCount?: boolean;
   averageRate: string | null;
   outputTokens: number;
   history: RateHistory;
@@ -157,11 +159,20 @@ export function RunningTokenRatePopover({
                 }
                 onBlur={() => setMode((current) => (current === 'dismissed' ? 'idle' : current))}
                 className="inline-flex min-h-6 min-w-6 items-center justify-center gap-[6px] whitespace-nowrap rounded-full px-1 text-13 font-medium tabular-nums text-[var(--status-bar-meta)] hover:bg-[var(--button-secondary-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-secondary)]"
-                aria-label={`${elapsedText} · ${t('chat.runningStatus.currentRate')}: ${rateText}`}
+                aria-label={
+                  rateText
+                    ? `${elapsedText} · ${isTokenCount ? rateText : `${t('chat.runningStatus.currentRate')}: ${rateText}`}`
+                    : elapsedText
+                }
               >
                 <span>{elapsedText}</span>
-                <span aria-hidden="true">&middot;</span>
-                <span>{rateText}</span>
+                {rateText && (
+                  <>
+                    <span aria-hidden="true">&middot;</span>
+                    {isTokenCount && <ArrowDown size={13} aria-hidden="true" />}
+                    <span>{rateText}</span>
+                  </>
+                )}
               </button>
             </Tooltip.Trigger>
           </PopoverTrigger>

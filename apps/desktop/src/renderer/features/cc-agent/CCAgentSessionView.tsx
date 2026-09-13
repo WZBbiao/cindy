@@ -5836,7 +5836,14 @@ function RunningStatusBar({
               <RunningTokenRatePopover
                 elapsedText={elapsedText}
                 rate={latestRateText}
-                rateText={rateText ?? t('chat.runningStatus.waitingSample')}
+                rateText={
+                  workflowWaiting || sideTaskRunning || backgroundTasksRunning
+                    ? null
+                    : usageMeta.kind === 'tokens'
+                      ? tokenCountText
+                      : rateText
+                }
+                isTokenCount={usageMeta.kind === 'tokens'}
                 averageRate={usageMeta.kind === 'rate' ? usageMeta.rate : null}
                 outputTokens={outputTokens}
                 history={rateHistory}
