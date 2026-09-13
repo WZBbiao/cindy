@@ -182,6 +182,7 @@ export function MobileOutboxBridge() {
           ],
         );
       },
+      session: (r) => maker(r).getSession(r.item.sessionId),
       applyProjection: (r, projection) => {
         guard();
         const epoch = epochs.get(leaseKey(r));

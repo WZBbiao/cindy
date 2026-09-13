@@ -86,6 +86,9 @@ async function setup(storage = disk()) {
     projection: vi.fn(async (r: DurableOutboxRecord) =>
       projection(r.item.clientId),
     ),
+    session: vi.fn(async (r: DurableOutboxRecord): Promise<{ id: string; status: string } | null> =>
+      ({ id: r.item.sessionId, status: "active" }),
+    ),
     prepare: vi.fn(
       async (r: DurableOutboxRecord) =>
         ({
@@ -126,6 +129,67 @@ async function setup(storage = disk()) {
 }
 
 describe("durable mobile outbox ownership", () => {
+  it.each([false, true])('cleans a positively deleted task even when cancellation is %s', async (cancelRequested) => {
+    const { store, runner, deps } = await setup();
+    await store.add({ ...message(), cancelRequested, state: 'confirming',
+      prepared: { clientId: 'id-1' } as QueuedRemoteMessage });
+    deps.projection.mockRejectedValue(new Error('[NOT_FOUND] Session session-a not found'));
+    deps.session.mockResolvedValue({ id: 'session-a', status: 'deleted' });
+    await runner.run();
+    expect(deps.cleanup).toHaveBeenCalledWith(expect.objectContaining({ cleanupOutcome: 'accepted' }), false);
+    expect(store.getSnapshot()).toEqual([]);
+    expect(deps.cancel).not.toHaveBeenCalled();
+    expect(deps.enqueue).not.toHaveBeenCalled();
+  });
+  it.each(['active', 'absent', 'wrong-id', 'unavailable', 'hidden', 'timeout'] as const)(
+    'retains an uncreated first message when deletion evidence is %s', async (evidence) => {
+      const { store, runner, deps, storage } = await setup();
+      await store.add({ ...message(), creation: { draft: {} } as DurableOutboxRecord['creation'] });
+      deps.projection.mockRejectedValue(evidence === 'timeout'
+        ? new Error('timed out: NOT_FOUND is not authoritative')
+        : Object.assign(new Error('not found'), { code: 'NOT_FOUND' }));
+      if (evidence === 'absent') deps.session.mockResolvedValue(null);
+      if (evidence === 'wrong-id') deps.session.mockResolvedValue({ id: 'session-b', status: 'deleted' });
+      if (evidence === 'unavailable') deps.session.mockRejectedValue(new Error('offline'));
+      if (evidence === 'hidden') deps.session.mockRejectedValue(new Error('[NOT_FOUND] Session does not exist'));
+      await runner.run();
+      expect(storage.data.size).toBe(1);
+      expect(store.getSnapshot()[0]?.cleanupOutcome).toBeUndefined();
+      expect(deps.cleanup).not.toHaveBeenCalled();
+      expect(deps.enqueue).not.toHaveBeenCalled();
+      if (evidence === 'timeout') expect(deps.session).not.toHaveBeenCalled();
+    },
+  );
+  it.each(['files', 'ledger'] as const)('resumes deleted-task cleanup after %s failure without remote evidence', async (failure) => {
+    const { store, runner, deps, storage } = await setup();
+    await store.add(message());
+    deps.projection.mockRejectedValue(new Error('[NOT_FOUND] Session session-a not found'));
+    deps.session.mockResolvedValue({ id: 'session-a', status: 'deleted' });
+    if (failure === 'files') deps.cleanup.mockRejectedValueOnce(new Error('busy'));
+    else vi.spyOn(storage, 'removeItem').mockRejectedValueOnce(new Error('busy'));
+    await runner.run();
+    expect(store.getSnapshot()[0]?.cleanupOutcome).toBe('cancelled');
+    runner.stop();
+    const recovered = await setup(storage);
+    await recovered.runner.run();
+    expect(recovered.store.getSnapshot()).toEqual([]);
+    expect(recovered.deps.cleanup).toHaveBeenCalledWith(expect.objectContaining({ cleanupOutcome: 'cancelled' }), true);
+    expect(recovered.deps.projection).not.toHaveBeenCalled();
+    expect(recovered.deps.session).not.toHaveBeenCalled();
+    expect(recovered.deps.enqueue).not.toHaveBeenCalled();
+  });
+  it('ignores a deletion probe completed after an account switch', async () => {
+    const { store, runner, deps, storage, deactivate } = await setup();
+    await store.add(message());
+    deps.projection.mockRejectedValue(new Error('[NOT_FOUND] Session session-a not found'));
+    deps.session.mockImplementationOnce(async () => {
+      deactivate();
+      return { id: 'session-a', status: 'deleted' };
+    });
+    await runner.run();
+    expect(storage.data.size).toBe(1);
+    expect(deps.cleanup).not.toHaveBeenCalled();
+  });
   it.each(['keys', 'item', 'json'] as const)('retries failed %s loading through ready and add without losing persisted work', async (failure) => {
     const storage = disk();
     const seed = createDurableOutbox(storage);

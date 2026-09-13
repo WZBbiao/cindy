@@ -1,4 +1,5 @@
 import type { InputDeliveryProjection } from "@cindy/device-link";
+import { isExplicitRemoteNotFoundError } from "./newSessionWorktree";
 import {
   createDurableOutbox,
   isDurableOutboxSettled,
@@ -18,6 +19,7 @@ export interface DurableOutboxDeliveryDeps {
   isCurrent(): boolean;
   canRun(record: DurableOutboxRecord): boolean;
   projection(record: DurableOutboxRecord): Promise<DeliveryProjection>;
+  session(record: DurableOutboxRecord): Promise<{ id: string; status: string } | null>;
   prepare(record: DurableOutboxRecord): Promise<QueuedRemoteMessage>;
   upload(
     record: DurableOutboxRecord,
@@ -75,7 +77,24 @@ export function createDurableOutboxDelivery(deps: DurableOutboxDeliveryDeps) {
     try {
       // Persisted completion never re-enters delivery, even after missing files or lost host history.
       if (isDurableOutboxSettled(record)) return await finish();
-      const projection = await deps.projection(record);
+      let projection: DeliveryProjection;
+      try {
+        projection = await deps.projection(record);
+      } catch (error) {
+        if (!current(record)) return;
+        if (isExplicitRemoteNotFoundError(error)) {
+          // NOT_FOUND also covers hidden tasks and tasks not created yet. Only a
+          // positive tombstone for this exact task authorizes terminal cleanup.
+          const session = await deps.session(record);
+          if (!current(record)) return;
+          if (session?.id === record.item.sessionId && session.status === "deleted") {
+            // Deletion does not prove an earlier enqueue was cancelled. Release
+            // remote uploads only when preparation never permitted an enqueue.
+            return await finish(!record.prepared);
+          }
+        }
+        throw error;
+      }
       if (!current(record)) return;
       deps.applyProjection(record, projection);
       const receipt = projection.deliveryReceipts?.find(
