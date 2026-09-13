@@ -163,6 +163,8 @@ interface RemoteOpArgs {
   caseSensitive?: boolean;
   maxMatches?: number;
   transferId?: string;
+  /** Optional export budget; omitted by older controllers. */
+  maxBytes?: number;
 }
 
 /** 该 workdir 在被控端的执行位置:本地 fs、二跳到 SSH remote host,或歧义拒绝。 */
@@ -634,6 +636,9 @@ async function handleRemoteOp(args: RemoteOpArgs): Promise<unknown> {
       try {
         const relPath = args.relPath ?? '';
         const st = await statEntry(workdir, relPath);
+        if (args.maxBytes !== undefined && st.size > args.maxBytes) {
+          return bad('REMOTE_FILE_TOO_LARGE');
+        }
         const abs = path.resolve(workdir, relPath);
         const realAbs = await fsp.realpath(abs);
         const realRoot = await fsp.realpath(workdir);
@@ -643,6 +648,7 @@ async function handleRemoteOp(args: RemoteOpArgs): Promise<unknown> {
         const transferId = `exp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
         exportJobs.set(transferId, { state: 'uploading', size: st.size, uploaded: 0 });
         void uploadLocalFile(realAbs, {
+          ...(args.maxBytes !== undefined ? { maxBytes: args.maxBytes } : {}),
           onProgress: (uploadedBytes) => {
             const j = exportJobs.get(transferId);
             if (j && j.state === 'uploading') j.uploaded = uploadedBytes;

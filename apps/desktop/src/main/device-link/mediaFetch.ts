@@ -486,6 +486,7 @@ export async function fetchLocalMediaToOss(arg: unknown): Promise<MediaFetchResu
   }
 
   const uploaded = await uploadLocalFile(absPath, {
+    ...(maxBytes !== null ? { maxBytes } : {}),
     ...(mimeType ? { contentType: mimeType } : {}),
     ...(uploadExtHint ? { extHint: uploadExtHint } : {}),
   });

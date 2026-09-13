@@ -51,13 +51,13 @@ vi.mock('electron', () => ({
   ipcMain: { handle: vi.fn() },
   utilityProcess: { fork: vi.fn() },
 }));
-const uploadMock = vi.fn(async (p: string) => ({
+const uploadMock = vi.fn(async (p: string, _opts?: unknown) => ({
   key: `oss/${p.split('/').pop()}`,
   size: 4,
   contentType: 'text/plain',
 }));
 vi.mock('../../device-link/mediaTransfer.js', () => ({
-  uploadLocalFile: (p: string) => uploadMock(p),
+  uploadLocalFile: (p: string, opts: unknown) => uploadMock(p, opts),
 }));
 vi.mock('../../device-link/remote-workdir-guard.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../device-link/remote-workdir-guard.js')>();
@@ -277,6 +277,21 @@ describe('file-browser device-op', () => {
     })) as { ok: boolean };
     expect(esc.ok).toBe(false);
     expect(uploadMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects growth beyond the snapshot budget before export and forwards valid bounds', async () => {
+    await fsWriteFile(path.join(workdir, 'grown.txt'), '12345');
+    expect(
+      await handleRemoteOp({ op: 'exportFileStart', workdir, relPath: 'grown.txt', maxBytes: 4 }),
+    ).toMatchObject({ ok: false });
+    expect(uploadMock).not.toHaveBeenCalled();
+    expect(
+      await handleRemoteOp({ op: 'exportFileStart', workdir, relPath: 'grown.txt', maxBytes: 5 }),
+    ).toMatchObject({ ok: true });
+    expect(uploadMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ maxBytes: 5 }),
+    );
   });
 
   it('oversize readFile returns structured OVERSIZE with stat (never a raw frame blowup)', async () => {

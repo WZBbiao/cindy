@@ -387,6 +387,14 @@ describe('fetchLocalMediaToOss — 图片上传去重', () => {
   });
 });
 
+it('retains the path budget at the uploader after authorization', async () => {
+  await fetchLocalMediaToOss({ url: 'xdt-file://local/?path=%2Fabs%2Fx.pdf&maxBytes=100' });
+  expect(uploadLocalFile).toHaveBeenCalledWith(
+    path.resolve('/abs/x.pdf'),
+    expect.objectContaining({ maxBytes: 100 }),
+  );
+});
+
 describe('__testing.parsePathQuery', () => {
   it('POSIX / Windows 绝对路径放行', () => {
     expect(__testing.parsePathQuery('xdt-file://local/?path=%2Fabs%2Fx.pdf')).toBe(

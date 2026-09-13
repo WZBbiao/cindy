@@ -386,6 +386,8 @@ export async function uploadLocalFile(
   opts: {
     contentType?: string;
     extHint?: string;
+    /** Caller budget, rechecked immediately before preparing the OSS upload. */
+    maxBytes?: number;
     /** 可选上传进度(已送入 HTTP 栈的字节数,略超前于真实网络进度)。 */
     onProgress?: (uploadedBytes: number) => void;
   } = {},
@@ -393,6 +395,12 @@ export async function uploadLocalFile(
   const st = await stat(localPath);
   if (!st.isFile()) throw new Error(`不是文件: ${localPath}`);
   const size = st.size;
+  if (opts.maxBytes !== undefined) {
+    if (!Number.isSafeInteger(opts.maxBytes) || opts.maxBytes < 0) {
+      throw new Error('INVALID_FILE_SIZE_LIMIT');
+    }
+    if (size > opts.maxBytes) throw new Error('REMOTE_FILE_TOO_LARGE');
+  }
   if (size > MAX_MEDIA_BYTES) {
     throw new Error(`文件超过上限 ${Math.round(MAX_MEDIA_BYTES / 1024 / 1024 / 1024)}GB`);
   }
@@ -406,7 +414,20 @@ export async function uploadLocalFile(
     if (size <= STREAM_THRESHOLD) {
       // 小媒体:读进 Buffer 整体 PUT(成熟稳定路径)。整体 PUT 无中间粒度,
       // 完成时一次性回调。
-      const buf = await readFile(localPath);
+      let buf: Buffer;
+      if (opts.maxBytes !== undefined) {
+        // One extra byte detects growth without reading an arbitrarily enlarged file.
+        const chunks: Buffer[] = [];
+        let received = 0;
+        for await (const chunk of createReadStream(localPath, { end: size })) {
+          received += chunk.length;
+          if (received > size) throw new Error('REMOTE_FILE_TOO_LARGE');
+          chunks.push(chunk);
+        }
+        buf = Buffer.concat(chunks);
+      } else {
+        buf = await readFile(localPath);
+      }
       if (buf.byteLength !== size) {
         throw new Error(`文件在上传前发生变化:预期 ${size} 字节,实际 ${buf.byteLength} 字节`);
       }
@@ -429,7 +450,10 @@ export async function uploadLocalFile(
       const attempts: StreamAttempt[] = [];
       const bodySource: OssPutBodySource = {
         create(): ReadableStream {
-          const source = createReadStream(localPath);
+          const source = createReadStream(
+            localPath,
+            opts.maxBytes !== undefined ? { end: size } : undefined,
+          );
           const hasher = createHash('sha256');
           const current: StreamAttempt = {
             sent: 0,
@@ -443,6 +467,12 @@ export async function uploadLocalFile(
           const counter = new Transform({
             transform(chunk: Buffer, _enc, cb) {
               current.sent += chunk.length;
+              if (opts.maxBytes !== undefined && current.sent > size) {
+                const error = new Error('REMOTE_FILE_TOO_LARGE');
+                current.sourceError = error;
+                cb(error);
+                return;
+              }
               hasher.update(chunk);
               // 只有当前这跳有资格上报进度(控制端看到的已传字节因此可能回退一次)。
               if (attempts.at(-1) === current) opts.onProgress?.(current.sent);

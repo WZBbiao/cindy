@@ -219,7 +219,12 @@ async function fetchRemoteBigFile(
                 ok: boolean;
                 transferId?: string;
                 message?: string;
-              }>(deviceId, { op: 'exportFileStart', workdir: args.workdir, relPath: args.relPath });
+              }>(deviceId, {
+                op: 'exportFileStart',
+                workdir: args.workdir,
+                relPath: args.relPath,
+                maxBytes: Math.max(1, args.size),
+              });
               if (!start?.ok || !start.transferId) {
                 throw new Error(start?.message ?? 'exportFileStart failed on remote device');
               }
