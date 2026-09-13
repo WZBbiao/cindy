@@ -105,7 +105,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let root: Root | undefined;
 afterEach(() => { act(() => root?.unmount()); root = undefined; });
 
-function mountWorkspace(options: { initialWorkingDir?: string; restoredKind?: NewSessionWorkspaceKind; suggestion?: string } = {}) {
+function mountWorkspace(options: { initialWorkingDir?: string; restoredKind?: NewSessionWorkspaceKind; suggestion?: string; deviceExplicit?: boolean } = {}) {
   let resolveRead!: (value: NewSessionStoredPreferences) => void;
   const pendingRead = new Promise<NewSessionStoredPreferences>((resolve) => { resolveRead = resolve; });
   const deviceOptions = [{ deviceId: 'a', name: 'A' }, { deviceId: 'b', name: 'B' }];
@@ -116,7 +116,7 @@ function mountWorkspace(options: { initialWorkingDir?: string; restoredKind?: Ne
     pickNewSessionDefaultDevice, buildRecentWorkspaceOptions,
     pickInitialNewSessionWorkspace: vi.fn(pickInitialNewSessionWorkspace),
     routeDeviceId: 'a', routeDeviceName: 'A', routeDeviceFallback: deviceOptions[0],
-    routeDeviceExplicit: !!initialWorkingDir, deviceOptions, initialWorkingDir, visualInitialDraft: null,
+    routeDeviceExplicit: options.deviceExplicit ?? !!initialWorkingDir, deviceOptions, initialWorkingDir, visualInitialDraft: null,
     sessions: deviceOptions.map(({ deviceId }) => ({
       deviceLinkDeviceId: deviceId, workingDir: `/projects/${deviceId}`, workspaceKind: 'project',
       status: 'active', updatedAt: '2026-09-01T00:00:00Z',
@@ -162,6 +162,12 @@ function mountWorkspace(options: { initialWorkingDir?: string; restoredKind?: Ne
 }
 
 describe('new session workspace page effects', () => {
+  it.each([undefined, 'findFile'])('keeps the checked recommendation device over a late remembered device (%s)', async (suggestion) => {
+    const page = mountWorkspace({ suggestion, deviceExplicit: true });
+    await page.resolvePreferences('project', 'b');
+    expect(page.current.selectedDeviceId).toBe('a');
+  });
+
   it('prefills a recommendation and preserves it when device/workspace defaults arrive', async () => {
     const page = mountWorkspace({ suggestion: 'findFile' });
     const prompt = i18n.t('devices.list.taskSuggestions.items.findFile.prompt', { lng: 'zh-CN' });

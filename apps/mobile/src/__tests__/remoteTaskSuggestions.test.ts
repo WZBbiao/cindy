@@ -110,6 +110,7 @@ describe("home recommendation connection readiness", () => {
       const indexedSearch = { status: 'idle' }, newSessionDisabled = false;
       const deviceModels = [{ deviceId: 'computer', canOpen: true }];
       const home = { primaryDevice: { deviceId: 'computer' } };
+      const taskSuggestionsDeviceId = selectedDeviceId ?? home.primaryDevice.deviceId;
       return ${expression};
     `);
     const ready = (status: string, issue: unknown = null, recovering: string[] = [], selected: string | null = 'computer') =>
@@ -126,6 +127,34 @@ describe("home recommendation connection readiness", () => {
         expect(mode(count, { ready: ready("online", null, [], selected) })).toBe(count === 0 ? "empty" : "footer");
       }
       expect(mode(count, { ready: ready("online") })).toBe(count === 0 ? "empty" : "footer");
+    }
+  });
+});
+
+describe("recommendation route target", () => {
+  it("passes the checked computer explicitly for both empty and template actions", () => {
+    const source = readFileSync(resolve(process.cwd(), "app/devices/index.tsx"), "utf8");
+    const openBody = source.match(/const openNewSession = useCallback\([^\n]*=> \{([\s\S]*?)\n  \}, \[guardedPush, home.primaryDevice/)?.[1];
+    const suggestedBody = source.match(/const openSuggestedSession = useCallback\([^\n]*=> \{([\s\S]*?)\n  \}, \[openNewSession/)?.[1];
+    expect(openBody).toBeTruthy();
+    expect(suggestedBody).toBeTruthy();
+    expect(source.match(/onSelect=\{openSuggestedSession\}/g)).toHaveLength(2);
+    expect(source.match(/onNewSession=\{\(\) => openSuggestedSession\(\)\}/g)).toHaveLength(2);
+    const open = new Function("project", "suggestion", "explicitDeviceId", "guardedPush", `
+      const home = { primaryDevice: { deviceId: 'fallback', label: 'Fallback' } };
+      const selectedDeviceId = null;
+      const newSessionDeviceOptions = [{ deviceId: 'checked', name: 'Checked' }];
+      const serializeNewSessionDeviceOptions = JSON.stringify;
+      const setError = (error) => { throw new Error(error); }, t = (key) => key;
+      ${openBody}
+    `);
+    const suggested = new Function("suggestion", "openNewSession", "taskSuggestionsDeviceId", suggestedBody!);
+    for (const suggestion of [undefined, "findFile"]) {
+      let route: { params: Record<string, string> } | undefined;
+      suggested(suggestion, (project: unknown, id: unknown, deviceId: unknown) =>
+        open(project, id, deviceId, (value: typeof route) => { route = value; }), "checked");
+      expect(route?.params).toMatchObject({ deviceId: "checked", deviceName: "Checked", deviceExplicit: "1" });
+      expect(route?.params.suggestion).toBe(suggestion);
     }
   });
 });

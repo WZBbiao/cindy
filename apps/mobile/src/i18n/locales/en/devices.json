@@ -187,11 +187,11 @@
       "title": "Away from your computer?\nYou can still get started.",
       "copy": "Ask Cindy to work on your computer, and check progress from your phone.",
       "footerTitle": "What can your computer help with next?",
-      "footerCopy": "Start a new task and follow its progress here.",
-      "newTask": "New task",
+      "footerCopy": "Start a new session and follow its progress here.",
+      "newTask": "New session",
       "tryThese": "Try a new task",
       "shuffle": "Show more ideas",
-      "syncHint": "Tasks started on your computer will appear here too.",
+      "syncHint": "Sessions started on your computer will appear here too.",
       "items": {
         "findFile": {
           "label": "Find a file on your computer",
