@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   countHomeSuggestionSessions,
@@ -94,5 +96,27 @@ describe("suggestion route IDs", () => {
       "deleteEverything",
     ])
       expect(isRemoteTaskSuggestionId(value)).toBe(false);
+  });
+});
+
+
+describe("home recommendation connection readiness", () => {
+  it("hides both modes after disconnect despite a retained online device snapshot", () => {
+    const source = readFileSync(resolve(process.cwd(), "app/devices/index.tsx"), "utf8");
+    const expression = source.match(/ready: ([\s\S]*?),\n  \}\);\n  const newSessionDeviceOptions/)?.[1];
+    expect(expression).toBeTruthy();
+    const ready = new Function("status", `
+      const initialHomeLoading = false, initialHomeError = null, connectionError = null;
+      const indexedSearch = { status: 'idle' }, newSessionDisabled = false;
+      const deviceModels = [{ deviceId: 'computer', canOpen: true }];
+      const selectedDeviceId = 'computer', home = { primaryDevice: { deviceId: 'computer' } };
+      return ${expression};
+    `);
+    for (const count of [0, 3]) {
+      expect(mode(count, { ready: ready("online") })).toBe(count === 0 ? "empty" : "footer");
+      expect(mode(count, { ready: ready("stopped") })).toBeNull();
+      expect(mode(count, { ready: ready("connecting") })).toBeNull();
+      expect(mode(count, { ready: ready("online") })).toBe(count === 0 ? "empty" : "footer");
+    }
   });
 });

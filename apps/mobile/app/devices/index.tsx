@@ -1902,7 +1902,7 @@ function HomeScreenContent() {
     totalSessionCount: home.overview.all,
     hasSearchOrFilter: !!searchQuery.trim() || indexedSearch.activeFilterCount > 0 || statusFilter !== 'active',
     // Cached/offline lists and in-flight searches must not look ready to start work.
-    ready: !initialHomeLoading && !initialHomeError && !connectionError
+    ready: status === 'online' && !initialHomeLoading && !initialHomeError && !connectionError
       && indexedSearch.status !== 'searching' && !newSessionDisabled
       && deviceModels.some((device) => device.canOpen
         && device.deviceId === (selectedDeviceId ?? home.primaryDevice?.deviceId)),
