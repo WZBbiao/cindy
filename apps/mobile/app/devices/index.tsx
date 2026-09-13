@@ -2744,8 +2744,8 @@ function HomeScreenContent() {
         />
       ) : null}
 
-      {showRemoteGuide ? null : (
-        // 引导态(无可控制电脑)下没有可发起对话的设备,置灰 FAB 也是噪音,直接不渲染。
+      {showRemoteGuide || taskSuggestionsMode === 'empty' ? null : (
+        // 无可控电脑时不提供入口;完整空态已有主按钮,避免重复显示新建 CTA。
         <Pressable
           accessibilityLabel={t('devices.list.a11y.newRemoteConversation')}
           accessibilityRole="button"
