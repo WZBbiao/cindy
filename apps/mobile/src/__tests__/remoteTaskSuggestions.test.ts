@@ -105,17 +105,26 @@ describe("home recommendation connection readiness", () => {
     const source = readFileSync(resolve(process.cwd(), "app/devices/index.tsx"), "utf8");
     const expression = source.match(/ready: ([\s\S]*?),\n  \}\);\n  const newSessionDeviceOptions/)?.[1];
     expect(expression).toBeTruthy();
-    const ready = new Function("status", `
+    const evaluateReady = new Function("status", "activeConnectionIssue", "homeRecoveringDeviceIds", "selectedDeviceId", `
       const initialHomeLoading = false, initialHomeError = null, connectionError = null;
       const indexedSearch = { status: 'idle' }, newSessionDisabled = false;
       const deviceModels = [{ deviceId: 'computer', canOpen: true }];
-      const selectedDeviceId = 'computer', home = { primaryDevice: { deviceId: 'computer' } };
+      const home = { primaryDevice: { deviceId: 'computer' } };
       return ${expression};
     `);
+    const ready = (status: string, issue: unknown = null, recovering: string[] = [], selected: string | null = 'computer') =>
+      evaluateReady(status, issue, new Set(recovering), selected);
     for (const count of [0, 3]) {
       expect(mode(count, { ready: ready("online") })).toBe(count === 0 ? "empty" : "footer");
       expect(mode(count, { ready: ready("stopped") })).toBeNull();
       expect(mode(count, { ready: ready("connecting") })).toBeNull();
+      expect(mode(count, { ready: ready("online", { kind: "unstable" }) })).toBeNull();
+      // All-devices and explicitly selected-device views share the target recovery gate.
+      for (const selected of [null, "computer"]) {
+        expect(mode(count, { ready: ready("online", null, ["computer"], selected) })).toBeNull();
+        expect(mode(count, { ready: ready("online", null, ["another-computer"], selected) })).toBe(count === 0 ? "empty" : "footer");
+        expect(mode(count, { ready: ready("online", null, [], selected) })).toBe(count === 0 ? "empty" : "footer");
+      }
       expect(mode(count, { ready: ready("online") })).toBe(count === 0 ? "empty" : "footer");
     }
   });
