@@ -1,3 +1,4 @@
+import { invokeOpenPath } from './openPath';
 import { REMOTE_VIEWER } from '../shared/remoteDesktopViewer';
 import type { RoutineInput } from '@cindy/maker-scheduler';
 import type { BotToolsetContext } from '../shared/botRemoteCapabilities';
@@ -114,7 +115,7 @@ import {
   type TerminateAgentProcessResult,
 } from '../shared/processMonitor';
 import { RESOURCE_USAGE_WINDOW_OPEN_CHANNEL } from '../shared/resourceUsageWindow';
-import { SESSION_ATTENTION_CLEARED_CHANNEL } from '../shared/sessionAttention';
+import { APP_ATTENTION_COUNT_CHANNEL, SESSION_ATTENTION_CLEARED_CHANNEL } from '../shared/sessionAttention';
 import { VOICE_INPUT_POWER_STATE_CHANNEL } from '../shared/voiceInputPowerIpc';
 import {
   VOICE_INPUT_TEST_CONNECTION_CHANNEL,
@@ -3579,6 +3580,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     clear: (): Promise<{ configured: boolean; enabled: boolean }> =>
       ipcRenderer.invoke('wecomGroupNotification:clear'),
   },
+  notificationSetAppAttentionCount: (snapshot: import('../shared/sessionAttention').AppAttentionSnapshot): Promise<void> =>
+    ipcRenderer.invoke(APP_ATTENTION_COUNT_CHANNEL, snapshot),
   notificationMarkSessionAttention: (sessionId: string): Promise<void> =>
     ipcRenderer.invoke('notification:mark-session-attention', sessionId),
   // intent:'explicit' = 用户真实看到了内容(报错 banner 聚焦驻留 / 全部标为已读等);
@@ -3766,8 +3769,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Open a local absolute path or a main-resolved cindy-media reference with
   // the OS default application (the renderer never receives the blob path).
-  openPath: (filePathOrUrl: string): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke('shell:open-path', filePathOrUrl),
+  openPath: (filePathOrUrl: string) => invokeOpenPath(ipcRenderer.invoke.bind(ipcRenderer), filePathOrUrl),
 
   // 文件 chip 右键「打开方式」。appId 只能是 listOpenWithApps 返回的 id,
   // main 侧反查可执行体;renderer 无法让 main 执行任意路径。
