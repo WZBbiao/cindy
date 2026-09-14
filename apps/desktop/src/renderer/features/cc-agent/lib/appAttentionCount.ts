@@ -14,32 +14,32 @@ export interface AppAttentionCountInput {
   attentionKinds: ReadonlyMap<string, AttentionKind>;
   runningSessionIds: ReadonlySet<string>;
   localActivities: ReadonlyMap<string, SidebarRightStatusInput['liveActivity']>;
-  getRemoteActivity: (sessionId: string) => SidebarRightStatusInput['liveActivity'];
   localSchedules: ReadonlyMap<string, ScheduleAttention>;
-  remoteSchedules: ReadonlyMap<string, ScheduleAttention>;
 }
 
 /** 与任务行的红/蓝/绿点同源，不随搜索、折叠或当前机器筛选改变。 */
 export function countAppAttention(input: AppAttentionCountInput): number {
   const attentionIds = new Set<string>();
   for (const session of input.sessions) {
-    if (session.status !== 'active' || isOrcaWorkerSession(session)) continue;
-    const localSchedule = input.localSchedules.get(session.id);
-    const remoteSchedule = input.remoteSchedules.get(session.id);
+    if (
+      session.status !== 'active' ||
+      isOrcaWorkerSession(session) ||
+      session.deviceLinkDeviceId !== undefined ||
+      session.source === 'scheduler' ||
+      session.source === 'learn' ||
+      input.localSchedules.has(session.id)
+    )
+      continue;
     const activity = projectSidebarSessionActivity({
       interruption: session,
       sessionId: session.id,
       title: session.title,
       recordStatus: session.status,
-      liveActivity: input.getRemoteActivity(session.id) ?? input.localActivities.get(session.id),
+      liveActivity: input.localActivities.get(session.id),
       attentionKind: input.attentionKinds.get(session.id),
-      isUrgentFromContext:
-        localSchedule?.hasUnreadFailedRun === true || remoteSchedule?.hasUnreadFailedRun === true,
+      isUrgentFromContext: false,
       isRunning: input.runningSessionIds.has(session.id),
-      hasAttentionNotification:
-        input.attentionKinds.has(session.id) ||
-        localSchedule?.hasUnreadRun === true ||
-        remoteSchedule?.hasUnreadRun === true,
+      hasAttentionNotification: input.attentionKinds.has(session.id),
     });
     const status = resolveSidebarRightStatus(activity);
     if (status === 'done' || status === 'awaiting' || status === 'error') {
