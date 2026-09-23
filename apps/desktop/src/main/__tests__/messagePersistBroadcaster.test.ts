@@ -2242,6 +2242,61 @@ describe('event timestamp persistence', () => {
     );
   });
 
+  it('does not stamp a pre-turn block from an unrelated non-full-text final', async () => {
+    const attachAt = Date.parse('2026-06-20T11:06:00.000Z');
+    const turnStartAt = Date.parse('2026-06-20T11:06:04.000Z');
+    const nowSpy = vi.spyOn(Date, 'now');
+    nowSpy.mockReturnValue(attachAt);
+    onAssistantTextEvent(SESSION, { text: 'runtime notice', isFinal: false }, null);
+    nowSpy.mockReturnValue(turnStartAt);
+    try {
+      noteTurnStarted(SESSION);
+      // 内容不同、且不是更长前缀的 final 可能属于相邻 text block，不能归到当前提示上。
+      onAssistantTextEvent(SESSION, { text: 'different reply', isFinal: true }, null);
+      flushAssistantBlock(SESSION, null);
+      await flushWrites();
+    } finally {
+      nowSpy.mockRestore();
+    }
+
+    expect(createMessage).toHaveBeenCalledWith(
+      SESSION,
+      expect.objectContaining({
+        role: 'assistant',
+        content: 'runtime notice',
+        createdAt: attachAt,
+      }),
+      broadcastGuard(),
+    );
+  });
+
+  it('stamps a pre-turn block when an accepted longer-prefix final completes it', async () => {
+    const attachAt = Date.parse('2026-06-20T11:07:00.000Z');
+    const turnStartAt = Date.parse('2026-06-20T11:07:04.000Z');
+    const nowSpy = vi.spyOn(Date, 'now');
+    nowSpy.mockReturnValue(attachAt);
+    onAssistantTextEvent(SESSION, { text: 'reply', isFinal: false }, null);
+    nowSpy.mockReturnValue(turnStartAt);
+    try {
+      noteTurnStarted(SESSION);
+      onAssistantTextEvent(SESSION, { text: 'reply continued', isFinal: true }, null);
+      flushAssistantBlock(SESSION, null);
+      await flushWrites();
+    } finally {
+      nowSpy.mockRestore();
+    }
+
+    expect(createMessage).toHaveBeenCalledWith(
+      SESSION,
+      expect.objectContaining({
+        role: 'assistant',
+        content: 'reply continued',
+        createdAt: turnStartAt,
+      }),
+      broadcastGuard(),
+    );
+  });
+
   it('stamps a pre-turn block on an equal-length final without isFullText', async () => {
     const attachAt = Date.parse('2026-06-20T11:04:00.000Z');
     const turnStartAt = Date.parse('2026-06-20T11:04:04.000Z');

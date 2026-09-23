@@ -2133,15 +2133,18 @@ export function onAssistantTextEvent(
       // Claude Code 的 local text block 没有该标记，但在 text_delta 丢失时仍可能携带
       // 已完整的、更长前缀文本。只接受以当前增量为前缀的更长文本，避免同一 assistant
       // 消息中相邻 text block 互相覆盖。
-      if (
-        isFullText ||
-        (rawText.length > block.text.length && rawText.startsWith(block.text))
-      ) {
+      const acceptedLongerPrefix =
+        rawText.length > block.text.length && rawText.startsWith(block.text);
+      // 校时必须能确认这条 final 属于当前 block：权威全文、等长同文，或上面已接受的
+      // 更长前缀。内容不同的非 isFullText final 可能属于相邻 text block（写入条件会
+      // 拒绝覆盖），不能因此把 turn 前提示的 createdAt 抬到本轮起点。
+      const finalBelongsToBlock = isFullText || rawText === block.text || acceptedLongerPrefix;
+      if (isFullText || acceptedLongerPrefix) {
         block.text = rawText;
       }
-      // 本轮 final 全文就是这个 block 的内容（含未走重写的等长补发），在此校时；
-      // 只看写入条件会因「等长 / 非更长前缀」漏校，旧起点被带到落库。
-      stampBlockAfterTurnStart(sessionId, block, turnScope);
+      if (finalBelongsToBlock) {
+        stampBlockAfterTurnStart(sessionId, block, turnScope);
+      }
       if (agentMeta) block.agentMeta = agentMeta;
       return block.persistId;
     }
